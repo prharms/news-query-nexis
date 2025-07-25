@@ -2,16 +2,17 @@ import os
 import httpx
 import time
 from dotenv import load_dotenv
-from typing import Optional, List
+from typing import Optional, List, Dict, Tuple
 from .doc_parser import split_content_into_chunks
 
 CLAUDE_API_URL = "https://api.anthropic.com/v1/messages"
 MODEL_NAME_CLAUDE_4 = "claude-sonnet-4-20250514"
 MODEL_NAME_CLAUDE_35 = "claude-3-5-sonnet-20241022"
 
-def ask_claude_single_chunk(question: str, document_chunk: str, chunk_number: int, total_chunks: int, max_tokens: int = 1500) -> Optional[str]:
+def ask_claude_single_chunk(question: str, document_chunk: str, chunk_number: int, total_chunks: int, max_tokens: int = 1500) -> Tuple[Optional[str], str]:
     """
-    Send a prompt to Claude API for a single chunk and return the response.
+    Send a prompt to Claude API for a single chunk and return the response and model used.
+    Returns (response_text, model_used)
     """
     # Try to load from .env file in current directory and parent directories
     load_dotenv(dotenv_path=".env", verbose=True)
@@ -76,8 +77,8 @@ Please answer in 500 words or fewer. If this is part of a larger document, focus
                 
                 if "content" in result and result["content"]:
                     print(f"✓ Successfully used {model_display_name} for chunk {chunk_number}/{total_chunks}")
-                    return result["content"][0]["text"].strip()
-                return None
+                    return result["content"][0]["text"].strip(), model_display_name
+                return None, model_display_name
                 
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 529:  # Overloaded error
@@ -101,11 +102,12 @@ Please answer in 500 words or fewer. If this is part of a larger document, focus
     
     # If we get here, all models failed for this chunk
     print(f"❌ All models failed for chunk {chunk_number}. Skipping this chunk.")
-    return None
+    return None, "Failed"
 
-def ask_claude(question: str, document_text: str, max_tokens: int = 1500) -> Optional[str]:
+def ask_claude(question: str, document_text: str, max_tokens: int = 1500) -> Tuple[Optional[str], Dict]:
     """
     Send a prompt to Claude API using batching for large documents.
+    Returns (answer, technical_details)
     """
     # Clean the document text to ensure it's valid UTF-8
     try:
@@ -115,10 +117,21 @@ def ask_claude(question: str, document_text: str, max_tokens: int = 1500) -> Opt
         # Fallback: replace problematic characters
         clean_document_text = document_text.encode('ascii', errors='ignore').decode('ascii')
     
+    # Initialize technical details
+    technical_details = {
+        "original_document_size": len(clean_document_text),
+        "chunks_created": 0,
+        "chunks_processed": 0,
+        "chunks_failed": 0,
+        "models_used": [],
+        "chunk_details": []
+    }
+    
     # Split into chunks if document is too large (rough estimate: 4 chars per token)
     # Leave room for question and instructions (estimate ~1000 tokens)
     max_chars_per_chunk = (200000 - 1000) * 4  # ~796,000 characters
     chunks = split_content_into_chunks(clean_document_text, max_chars_per_chunk)
+    technical_details["chunks_created"] = len(chunks)
     
     if len(chunks) > 1:
         print(f"📄 Document split into {len(chunks)} chunks for processing")
@@ -126,29 +139,46 @@ def ask_claude(question: str, document_text: str, max_tokens: int = 1500) -> Opt
     # Process each chunk
     chunk_responses = []
     for i, chunk in enumerate(chunks, 1):
-        response = ask_claude_single_chunk(question, chunk, i, len(chunks), max_tokens)
+        response, model_used = ask_claude_single_chunk(question, chunk, i, len(chunks), max_tokens)
+        
+        chunk_detail = {
+            "chunk_number": i,
+            "chunk_size": len(chunk),
+            "model_used": model_used,
+            "success": response is not None
+        }
+        technical_details["chunk_details"].append(chunk_detail)
+        
         if response:
             chunk_responses.append(response)
+            technical_details["chunks_processed"] += 1
+            if model_used not in technical_details["models_used"]:
+                technical_details["models_used"].append(model_used)
         else:
+            technical_details["chunks_failed"] += 1
             print(f"⚠ Chunk {i} failed to process, continuing with remaining chunks...")
     
     if not chunk_responses:
         print("❌ All chunks failed to process.")
-        return None
+        return None, technical_details
     
     # If we only have one chunk or one response, return it directly
     if len(chunk_responses) == 1:
-        return chunk_responses[0]
+        technical_details["final_model"] = technical_details["models_used"][0] if technical_details["models_used"] else "Unknown"
+        return chunk_responses[0], technical_details
     
     # Combine multiple responses
     print(f"🔄 Combining responses from {len(chunk_responses)} chunks...")
-    combined_response = combine_chunk_responses(chunk_responses, question)
+    combined_response, synthesis_model = combine_chunk_responses(chunk_responses, question)
+    technical_details["final_model"] = synthesis_model
+    technical_details["synthesis_performed"] = True
     
-    return combined_response
+    return combined_response, technical_details
 
-def combine_chunk_responses(responses: List[str], original_question: str) -> str:
+def combine_chunk_responses(responses: List[str], original_question: str) -> Tuple[str, str]:
     """
     Combine multiple chunk responses into a coherent final answer.
+    Returns (combined_response, model_used)
     """
     # If we have multiple responses, ask Claude to synthesize them
     combined_text = "\n\n---\n\n".join(responses)
