@@ -7,7 +7,7 @@ A command-line tool that allows you to ask questions about documents stored in a
 - Processes all `.docx` files in a data directory
 - Extracts articles and content from Word documents
 - Sends questions to Claude 4 Sonnet API with automatic fallback to Claude 3.5 Sonnet
-- Automatic document truncation to handle large files within token limits
+- Intelligent document batching to process large files without truncation
 - Requires citations with title, publication name, and date for all factual claims
 - Saves output as professionally formatted Word documents with timestamps
 - Returns concise responses (500 words or fewer)
@@ -87,20 +87,23 @@ output/                 # Generated Word documents
 1. **Document Processing**: The tool scans the specified data directory for `.docx` files
 2. **Content Extraction**: Each document is parsed to extract articles and their content
 3. **Question Submission**: Your question and the combined document content are sent to Claude 4 Sonnet
-4. **Automatic Fallback**: If Claude 4 is overloaded, automatically tries Claude 3.5 Sonnet
-5. **Response with Citations**: Claude returns a concise answer with required citations (title, publication, date)
-6. **Word Document Output**: Results are saved as professionally formatted Word documents with timestamps
+4. **Intelligent Batching**: Large documents are automatically split into manageable chunks and processed separately
+5. **Response Synthesis**: Multiple chunk responses are intelligently combined into a coherent final answer
+6. **Automatic Fallback**: If Claude 4 is overloaded, automatically tries Claude 3.5 Sonnet
+7. **Response with Citations**: Claude returns a concise answer with required citations (title, publication, date)
+8. **Word Document Output**: Results are saved as professionally formatted Word documents with timestamps
 
 ## Error Handling
 
 The tool handles various error conditions:
 - Missing data directory
 - No `.docx` files found
-- Large documents exceeding token limits (automatic truncation)
+- Large documents exceeding token limits (automatic batching and chunking)
 - API overload conditions (automatic fallback to Claude 3.5)
 - API connection issues
 - Invalid API responses
 - UTF-8 encoding issues
+- Failed chunk processing (continues with remaining chunks)
 
 ## Configuration
 
@@ -113,7 +116,7 @@ ANTHROPIC_API_KEY=your_anthropic_api_key_here
 
 ### API Model
 
-The tool uses Claude 4 Sonnet by default with automatic fallback to Claude 3.5 Sonnet if the primary model is overloaded. Large documents are automatically truncated to fit within the 200,000 token limit. This ensures reliable operation even during high-demand periods and with very large document sets.
+The tool uses Claude 4 Sonnet by default with automatic fallback to Claude 3.5 Sonnet if the primary model is overloaded. Large documents are automatically split into chunks and processed separately, then intelligently combined into a comprehensive answer. This ensures no information is lost and provides reliable operation even during high-demand periods and with very large document sets.
 
 ## Development
 

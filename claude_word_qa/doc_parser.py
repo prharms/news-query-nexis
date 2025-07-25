@@ -35,6 +35,57 @@ def extract_articles_from_docx(docx_path: str) -> List[Dict[str, str]]:
     
     return articles
 
+def split_content_into_chunks(content: str, max_chars_per_chunk: int = 700000) -> List[str]:
+    """
+    Split large content into chunks that fit within token limits.
+    Tries to split at natural boundaries (paragraphs) when possible.
+    """
+    if len(content) <= max_chars_per_chunk:
+        return [content]
+    
+    chunks = []
+    current_chunk = ""
+    
+    # Split by double newlines (paragraphs) first
+    paragraphs = content.split('\n\n')
+    
+    for paragraph in paragraphs:
+        # If adding this paragraph would exceed the limit
+        if len(current_chunk) + len(paragraph) + 2 > max_chars_per_chunk:
+            if current_chunk:
+                chunks.append(current_chunk.strip())
+                current_chunk = paragraph
+            else:
+                # If a single paragraph is too long, split it by sentences
+                sentences = paragraph.split('. ')
+                for sentence in sentences:
+                    if len(current_chunk) + len(sentence) + 2 > max_chars_per_chunk:
+                        if current_chunk:
+                            chunks.append(current_chunk.strip())
+                            current_chunk = sentence
+                        else:
+                            # If a single sentence is too long, split by words
+                            words = sentence.split()
+                            for word in words:
+                                if len(current_chunk) + len(word) + 1 > max_chars_per_chunk:
+                                    if current_chunk:
+                                        chunks.append(current_chunk.strip())
+                                        current_chunk = word
+                                    else:
+                                        # If a single word is too long, truncate it
+                                        chunks.append(word[:max_chars_per_chunk])
+                                else:
+                                    current_chunk += " " + word if current_chunk else word
+                    else:
+                        current_chunk += ". " + sentence if current_chunk else sentence
+        else:
+            current_chunk += "\n\n" + paragraph if current_chunk else paragraph
+    
+    if current_chunk:
+        chunks.append(current_chunk.strip())
+    
+    return chunks
+
 def process_data_directory(data_dir: str = "data") -> str:
     """
     Process all files in the data directory and return combined content.
