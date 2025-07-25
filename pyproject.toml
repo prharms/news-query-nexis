@@ -1,0 +1,23 @@
+[project]
+name = "news-query-nexis"
+version = "0.1.0"
+description = "CLI tool to ask questions about documents in a data directory using Anthropic Claude 4 Sonnet API with automatic fallback."
+authors = [
+    {name = "Your Name", email = "your@email.com"}
+]
+requires-python = ">=3.8"
+
+dependencies = [
+    "python-dotenv",
+    "python-docx", 
+    "httpx"
+]
+
+[project.scripts]
+claude-qa = "claude_word_qa.cli:main"
+
+[tool.setuptools]
+packages = ["claude_word_qa"]
+
+[project.optional-dependencies]
+dev = ["pytest"] 
