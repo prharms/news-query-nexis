@@ -34,6 +34,13 @@ def ask_claude(question: str, document_text: str, max_tokens: int = 1500) -> Opt
         # Fallback: replace problematic characters
         clean_document_text = document_text.encode('ascii', errors='ignore').decode('ascii')
     
+    # Truncate document if too large (rough estimate: 4 chars per token)
+    # Leave room for question and instructions (estimate ~1000 tokens)
+    max_chars = (200000 - 1000) * 4  # ~796,000 characters
+    if len(clean_document_text) > max_chars:
+        clean_document_text = clean_document_text[:max_chars]
+        print(f"⚠ Document truncated to {max_chars:,} characters to fit token limit")
+    
     prompt = f"""You are a helpful assistant. The following is the content of documents from a data directory:
 
 {clean_document_text}
