@@ -3,7 +3,7 @@ import httpx
 import time
 from dotenv import load_dotenv
 from typing import Optional, List, Dict, Tuple
-from .doc_parser import split_content_into_chunks
+from .doc_parser import split_content_into_chunks, process_data_directory
 
 CLAUDE_API_URL = "https://api.anthropic.com/v1/messages"
 MODEL_NAME_CLAUDE_4 = "claude-sonnet-4-20250514"
@@ -169,7 +169,10 @@ def ask_claude(question: str, document_text: str, max_tokens: int = 1500) -> Tup
     # Split into chunks if document is too large (rough estimate: 4 chars per token)
     # Leave room for question and instructions (estimate ~1000 tokens)
     max_chars_per_chunk = (200000 - 1000) * 4  # ~796,000 characters
-    chunks = split_content_into_chunks(clean_document_text, max_chars_per_chunk)
+    
+    # Get articles from the doc_parser if available
+    articles = getattr(process_data_directory, 'all_articles', None)
+    chunks = split_content_into_chunks(clean_document_text, max_chars_per_chunk, articles)
     technical_details["chunks_created"] = len(chunks)
     
     if len(chunks) > 1:

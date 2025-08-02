@@ -35,14 +35,39 @@ def extract_articles_from_docx(docx_path: str) -> List[Dict[str, str]]:
     
     return articles
 
-def split_content_into_chunks(content: str, max_chars_per_chunk: int = 700000) -> List[str]:
+def split_content_into_chunks(content: str, max_chars_per_chunk: int = 700000, articles: List[Dict[str, str]] = None) -> List[str]:
     """
     Split large content into chunks that fit within token limits.
-    Tries to split at natural boundaries (paragraphs) when possible.
+    Tries to split at natural boundaries (articles) when possible.
     """
     if len(content) <= max_chars_per_chunk:
         return [content]
     
+    # If we have article information, split by articles first
+    if articles:
+        chunks = []
+        current_chunk = ""
+        
+        for article in articles:
+            article_content = f"Title: {article['title']}\nContent: {article['content']}"
+            
+            # If adding this article would exceed the limit
+            if len(current_chunk) + len(article_content) + 2 > max_chars_per_chunk:
+                if current_chunk:
+                    chunks.append(current_chunk.strip())
+                    current_chunk = article_content
+                else:
+                    # If a single article is too long, fall back to paragraph splitting
+                    chunks.extend(split_content_into_chunks(article_content, max_chars_per_chunk))
+            else:
+                current_chunk += "\n\n" + article_content if current_chunk else article_content
+        
+        if current_chunk:
+            chunks.append(current_chunk.strip())
+        
+        return chunks
+    
+    # Fallback to paragraph splitting if no article information
     chunks = []
     current_chunk = ""
     
@@ -95,6 +120,7 @@ def process_data_directory(data_dir: str = "data") -> str:
         raise FileNotFoundError(f"Data directory '{data_dir}' not found.")
     
     all_content = []
+    all_articles = []
     
     for filename in os.listdir(data_dir):
         file_path = os.path.join(data_dir, filename)
@@ -105,6 +131,13 @@ def process_data_directory(data_dir: str = "data") -> str:
                 articles = extract_articles_from_docx(file_path)
                 
                 for article in articles:
+                    # Add file information to article
+                    article_with_file = {
+                        "title": f"{filename}: {article['title']}",
+                        "content": article['content']
+                    }
+                    all_articles.append(article_with_file)
+                    
                     all_content.append(f"File: {filename}")
                     all_content.append(f"Title: {article['title']}")
                     all_content.append(f"Content: {article['content']}")
@@ -115,5 +148,8 @@ def process_data_directory(data_dir: str = "data") -> str:
     
     if not all_content:
         raise ValueError(f"No .docx files found in '{data_dir}' directory.")
+    
+    # Store articles for chunking
+    process_data_directory.all_articles = all_articles
     
     return "\n".join(all_content) 
