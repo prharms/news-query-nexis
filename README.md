@@ -5,7 +5,8 @@ A command-line tool that allows you to ask questions about documents stored in a
 ## Features
 
 - Processes all `.docx` files in a data directory
-- Extracts articles and content from Word documents
+- Extracts articles and content from Word documents using natural article boundaries
+- **Article-based intelligent chunking** - splits documents at article boundaries instead of arbitrary paragraphs
 - Sends questions to Claude 4 Sonnet API with automatic fallback to Claude 3.5 Sonnet
 - Intelligent document batching to process large files without truncation
 - **Forensic-level anti-hallucination protocols** ensuring only explicitly stated information is reported
@@ -91,15 +92,16 @@ output/                 # Generated Word documents
 ## How It Works
 
 1. **Document Processing**: The tool scans the specified data directory for `.docx` files
-2. **Content Extraction**: Each document is parsed to extract articles and their content
-3. **Forensic Analysis**: AI operates as a forensic document examiner conducting critical legal analysis
-4. **Question Submission**: Your question and the combined document content are sent to Claude 4 Sonnet
-5. **Intelligent Batching**: Large documents are automatically split into manageable chunks and processed separately
-6. **Response Synthesis**: Multiple chunk responses are intelligently combined into a coherent final answer
-7. **Automatic Fallback**: If Claude 4 is overloaded, automatically tries Claude 3.5 Sonnet
-8. **Anti-Hallucination Verification**: Every claim is verified against source material before inclusion
-9. **Response with Citations**: Claude returns a concise answer with required citations (title, publication, date)
-10. **Word Document Output**: Results are saved as professionally formatted Word documents with timestamps and technical details
+2. **Content Extraction**: Each document is parsed to extract articles and their content using natural article boundaries
+3. **Article-Based Chunking**: Documents are split at article boundaries rather than arbitrary paragraphs, preserving content coherence
+4. **Forensic Analysis**: AI operates as a forensic document examiner conducting critical legal analysis
+5. **Question Submission**: Your question and the combined document content are sent to Claude 4 Sonnet
+6. **Intelligent Batching**: Large documents are automatically split into manageable chunks and processed separately
+7. **Response Synthesis**: Multiple chunk responses are intelligently combined into a coherent final answer
+8. **Automatic Fallback**: If Claude 4 is overloaded, automatically tries Claude 3.5 Sonnet
+9. **Anti-Hallucination Verification**: Every claim is verified against source material before inclusion
+10. **Response with Citations**: Claude returns a concise answer with required citations (title, publication, date)
+11. **Word Document Output**: Results are saved as professionally formatted Word documents with timestamps and technical details
 
 ## Anti-Hallucination Protocols
 
@@ -137,7 +139,7 @@ ANTHROPIC_API_KEY=your_anthropic_api_key_here
 
 ### API Model
 
-The tool uses Claude 4 Sonnet by default with automatic fallback to Claude 3.5 Sonnet if the primary model is overloaded. Large documents are automatically split into chunks and processed separately, then intelligently combined into a comprehensive answer. This ensures no information is lost and provides reliable operation even during high-demand periods and with very large document sets.
+The tool uses Claude 4 Sonnet by default with automatic fallback to Claude 3.5 Sonnet if the primary model is overloaded. Large documents are automatically split into chunks at natural article boundaries and processed separately, then intelligently combined into a comprehensive answer. This article-based chunking approach preserves content coherence and ensures no information is lost, providing reliable operation even during high-demand periods and with very large document sets.
 
 ### Technical Details
 
