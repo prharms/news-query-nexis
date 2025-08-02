@@ -9,6 +9,28 @@ CLAUDE_API_URL = "https://api.anthropic.com/v1/messages"
 MODEL_NAME_CLAUDE_4 = "claude-sonnet-4-20250514"
 MODEL_NAME_CLAUDE_35 = "claude-3-5-sonnet-20241022"
 
+def make_api_request_with_retry(client, url, headers, data, max_retries=3):
+    """
+    Make API request with retry logic and exponential backoff.
+    """
+    for attempt in range(max_retries):
+        try:
+            response = client.post(url, headers=headers, json=data)
+            response.raise_for_status()
+            return response.json()
+        except httpx.TimeoutException as e:
+            if attempt < max_retries - 1:
+                wait_time = (2 ** attempt) * 5  # 5, 10, 20 seconds
+                print(f"⚠ Timeout on attempt {attempt + 1}/{max_retries}, retrying in {wait_time} seconds...")
+                time.sleep(wait_time)
+                continue
+            else:
+                raise e
+        except Exception as e:
+            raise e
+    
+    return None
+
 def ask_claude_single_chunk(question: str, document_chunk: str, chunk_number: int, total_chunks: int, max_tokens: int = 1500) -> Tuple[Optional[str], str]:
     """
     Send a prompt to Claude API for a single chunk and return the response and model used.
@@ -38,15 +60,29 @@ def ask_claude_single_chunk(question: str, document_chunk: str, chunk_number: in
     
     chunk_info = f" (Chunk {chunk_number} of {total_chunks})" if total_chunks > 1 else ""
     
-    prompt = f"""You are a helpful assistant. The following is the content of documents from a data directory{chunk_info}:
+    prompt = f"""You are a forensic document examiner conducting a critical legal analysis. Your role is to extract ONLY information that is explicitly stated in the provided source material. The following is the content of documents from a data directory{chunk_info}:
 
 {clean_document_text}
 
 Question: {question}
 
-IMPORTANT: You must include citations in parentheses after every factual claim you make. Citations should include the article title, publication name, and publication date if available from the document. For example: (Title: "Article Name", Publication: "Miami Herald", Date: 2024-01-15) or (Title: "Article Name", Publication: "Miami Herald") if no date is available.
+CRITICAL ANTI-HALLUCINATION PROTOCOLS:
+1. ZERO CREATIVITY: You are forbidden from creating, inventing, or inferring any information not explicitly present in the source material.
+2. EXACT TEXT ONLY: When quoting, use ONLY the exact words from the source material. Do not paraphrase quotes or create "similar" statements.
+3. VERIFICATION REQUIRED: Before making any statement, verify that the exact information appears in the source material.
+4. NO INFERENCE: Do not draw conclusions, make connections, or suggest implications beyond what is explicitly stated.
+5. CITATION MANDATORY: Every factual claim must include a citation with the exact article title, publication name, and publication date.
+6. LEGAL LIABILITY: This analysis may be used in legal proceedings. Any fabricated information could result in lawsuits, financial damages, and professional consequences.
 
-Please answer in 500 words or fewer. If this is part of a larger document, focus on the information present in this chunk."""
+QUOTE VERIFICATION RULES:
+- Only use quotation marks around text that appears EXACTLY as written in the source material
+- If you cannot find the exact quote in the source, do not use quotation marks
+- Do not create "approximate" or "similar" quotes
+- If information is not explicitly stated, state "The source material does not contain information about [topic]"
+
+CITATION FORMAT: (Title: "Exact Article Title", Publication: "Publication Name", Date: YYYY-MM-DD)
+
+Provide a factual, evidence-based answer in 500 words or fewer. If this is part of a larger document, focus on the information present in this chunk only. If the source material does not contain relevant information, state this explicitly."""
 
     headers = {
         "x-api-key": api_key,
@@ -70,12 +106,10 @@ Please answer in 500 words or fewer. If this is part of a larger document, focus
         }
         
         try:
-            with httpx.Client(timeout=60) as client:
-                response = client.post(CLAUDE_API_URL, headers=headers, json=data)
-                response.raise_for_status()
-                result = response.json()
+            with httpx.Client(timeout=120) as client:
+                result = make_api_request_with_retry(client, CLAUDE_API_URL, headers, data)
                 
-                if "content" in result and result["content"]:
+                if result and "content" in result and result["content"]:
                     print(f"✓ Successfully used {model_display_name} for chunk {chunk_number}/{total_chunks}")
                     return result["content"][0]["text"].strip(), model_display_name
                 return None, model_display_name
@@ -89,6 +123,11 @@ Please answer in 500 words or fewer. If this is part of a larger document, focus
                 if hasattr(e, 'response'):
                     print(f"Response content: {e.response.text}")
                 continue  # Try the next model
+                
+        except httpx.TimeoutException as e:
+            print(f"⚠ Timeout error with {model_display_name} for chunk {chunk_number}: {e}")
+            print(f"   This may be due to large document size or API server load. Trying fallback...")
+            continue  # Try the next model
                 
         except UnicodeDecodeError as e:
             print(f"Unicode decode error with {model_display_name} for chunk {chunk_number}: {e}")
@@ -183,20 +222,36 @@ def combine_chunk_responses(responses: List[str], original_question: str) -> Tup
     # If we have multiple responses, ask Claude to synthesize them
     combined_text = "\n\n---\n\n".join(responses)
     
-    synthesis_prompt = f"""You are a helpful assistant. I have analyzed a large document by breaking it into chunks and asking the same question about each chunk. Here are the responses from each chunk:
+    synthesis_prompt = f"""You are a forensic document examiner conducting a critical legal analysis. Your role is to synthesize ONLY information that is explicitly stated in the provided source material. I have analyzed a large document by breaking it into chunks and asking the same question about each chunk. Here are the responses from each chunk:
 
 {combined_text}
 
 Original Question: {original_question}
 
-Please synthesize these responses into a single, coherent answer that:
-1. Combines all relevant information from all chunks
-2. Eliminates redundancy and contradictions
-3. Maintains all important citations and factual claims
-4. Stays within 500 words
-5. Provides a comprehensive answer to the original question
+CRITICAL ANTI-HALLUCINATION PROTOCOLS:
+1. ZERO CREATIVITY: You are forbidden from creating, inventing, or inferring any information not explicitly present in the source material.
+2. EXACT TEXT ONLY: When quoting, use ONLY the exact words from the source material. Do not paraphrase quotes or create "similar" statements.
+3. VERIFICATION REQUIRED: Before making any statement, verify that the exact information appears in the source material.
+4. NO INFERENCE: Do not draw conclusions, make connections, or suggest implications beyond what is explicitly stated.
+5. CITATION MANDATORY: Every factual claim must include a citation with the exact article title, publication name, and publication date.
+6. LEGAL LIABILITY: This analysis may be used in legal proceedings. Any fabricated information could result in lawsuits, financial damages, and professional consequences.
 
-IMPORTANT: Preserve all citations in parentheses after factual claims."""
+QUOTE VERIFICATION RULES:
+- Only use quotation marks around text that appears EXACTLY as written in the source material
+- If you cannot find the exact quote in the source, do not use quotation marks
+- Do not create "approximate" or "similar" quotes
+- If information is not explicitly stated, state "The source material does not contain information about [topic]"
+
+Synthesis Requirements:
+1. Combine all relevant information from all chunks
+2. Eliminate redundancy and contradictions
+3. Maintain all important citations and factual claims
+4. Stay within 500 words
+5. Provide a comprehensive answer to the original question
+
+CITATION FORMAT: (Title: "Exact Article Title", Publication: "Publication Name", Date: YYYY-MM-DD)
+
+IMPORTANT: Preserve all citations in parentheses after factual claims. Do not add any information not explicitly stated in the source material. If the source material does not contain relevant information, state this explicitly."""
 
     # Use the same API call logic for synthesis
     return ask_claude_single_chunk(original_question, synthesis_prompt, 1, 1, max_tokens=2000) 
